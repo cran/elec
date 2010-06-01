@@ -1,6 +1,7 @@
 \name{elec.data}
 \alias{make.Z}
 \alias{elec.data}
+\alias{is.elec.data}
 \alias{print.elec.data}
 
 \title{ core election audit data structure }
@@ -23,6 +24,7 @@ elec.data(V, C.names = names(V)[2:length(V)],
           f = 1, audit = NULL,
           pool = TRUE, tot.votes.col = "tot.votes", PID.col="PID")
 make.Z( ... )
+\method{is}{elec.data}(x)
 \method{print}{elec.data}(x, n = 4, ...)
 }
 \arguments{
@@ -40,7 +42,7 @@ make.Z( ... )
   precincts. }
   \item{...}{ The collection of arguments that are passed directly to
     elec.data, or (in the case of print), unused.}
-    \item{x}{ For print(). An elec.data object }
+    \item{x}{ For print() and is.elec.data(). An elec.data object }
   \item{n}{ For print(). number of sample precincts to print }
 
 }

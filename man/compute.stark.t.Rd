@@ -25,7 +25,7 @@ compute.stark.t(Z, bound.col, calc.e_p = calc.pairwise.e_p,
 	                      with compute.stark.err }
   \item{bound.col}{  This is the vector containing the maximum number of votes
 	                 possible in the various precincts. }
-  \item{calc.e_p}{ }
+  \item{calc.e_p}{ Function to compute e_p.  Default is calc.pairwise.e_p. }
   \item{w_p}{ The weight function to be applied to the precinct error. }
   \item{err.override}{ If non-null, use this as the found error in votes rather than
 	                      the actual errors found in the audit. }

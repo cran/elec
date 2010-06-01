@@ -31,7 +31,7 @@ stark.pairwise.test(votes, audits, C.names = NULL,
   \item{C.names}{ Names of candidates (and names of cor columns in votes
   and audits tables.  If NULL will derive from cols 2 on of votes}
   \item{f}{ The number of winners }
-  \item{pool}{ }
+  \item{pool}{If TRUE, combine small candidates into single pseudo-candidates to increase power }
   \item{pairwise}{if TRUE then do a pairwise test for all pairs and return
                        highest p-value }
   \item{Z}{ The object holding all the voting information.  See below
@@ -42,11 +42,12 @@ stark.pairwise.test(votes, audits, C.names = NULL,
                    (A list of two functions) }
   \item{max_err}{ Function to compute max error bounds for each
   precint }
-  \item{bound.col}{ }
+  \item{bound.col}{Name (or column index) of column in the vote matrix
+  corresponding to maximum number of votes allowed in precinct. }
   \item{strat.col}{ Name of column that determines how to stratify  
   if NULL will not stratify  }
-  \item{strat.method}{ }
-  \item{err.override}{ }
+  \item{strat.method}{ Not currently implemented. }
+  \item{err.override}{ If non-null, use this as the found error in votes rather than the actual errors found in the audit.}
   \item{n}{  Elements of the test statistic.  Can pass to avoid computation
                    if those values are already known (e.g., for a
   simulation) }

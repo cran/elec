@@ -20,13 +20,18 @@ make.sample.from.totals.margin(M, totals, per.winner = NULL)
 }
 
 \arguments{
-  \item{M}{ The margin desired between the winner and loser. }
+  \item{M}{ The margin desired between the winner and loser (as a percent). }
   \item{N}{ Number of precincts desired. }
   \item{strata}{ Number of strata desired. }
   \item{per.winner}{ The percent of votes the winner should receive. }
   \item{worst.e.max}{ The worst e.max possible for any precinct. }
   \item{R}{ The "dispersion" a measure of how unequal in size precincts
-  should be.  R needs to be greater than 2.  NULL indicates equal size. }
+  should be.  R needs to be greater than 0.  NULL indicates equal size.
+  For R between 0 and 1, the precincts are distributed 'linearly', i.e.,
+  the size of precinct i is proportional to i.  At 2, the smallest
+  precint will be near 0 and the largest twice the average votes per
+  precinct.  After 2, the precincts are distributed in a more curved
+  fashion so that the smaller precincts do not go negative.}
   \item{tot.votes}{ The total votes desired. }
   \item{vote.W}{ Total votes for winner. }
   \item{vote.L}{ Total votes for loser. }

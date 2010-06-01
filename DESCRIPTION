@@ -1,8 +1,8 @@
 Package: elec
 Type: Package
 Title: Collection of functions for statistical election audits
-Version: 0.1
-Date: 2009-01-14
+Version: 0.1.2
+Date: 2010-06-01
 Author: Luke Miratrix
 Maintainer: Luke Mirarix <luke@vzvz.org>
 Description: This is a bizzare collection of functions written to do
@@ -12,6 +12,6 @@ Description: This is a bizzare collection of functions written to do
         these methods.
 License: GPL (>= 2)
 LazyLoad: yes
-Packaged: 2009-04-30 23:20:58 UTC; luke
+Packaged: 2012-10-29 08:58:37 UTC; ripley
 Repository: CRAN
-Date/Publication: 2009-05-04 10:18:12
+Date/Publication: 2012-10-29 08:58:37

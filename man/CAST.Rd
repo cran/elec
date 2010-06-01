@@ -19,7 +19,7 @@ have substantial error.  It returns an \code{audit.plan}.
 sample drawn in previous step) and analyzes it.  
 }
 \usage{
-CAST.calc.sample(Z, beta = 0.9, stages = 2, t = 3,
+CAST.calc.sample(Z, beta = 0.9, stages = 1, t = 3, as.taint=FALSE,
             small.cut = NULL, strata = NULL, drop = NULL,
             method = c("select", "binomial", "hypergeometric"),
             calc.e.max = TRUE, bound.function = maximumMarginBound)
@@ -34,8 +34,12 @@ test.CAST()
   \item{Z}{ elec.data object }
   \item{beta}{ the confidence level desired }
   \item{stages}{ number of auditing stages. Each stage will have the
-    same confidence level, determined by a function of beta. }
-  \item{t}{ The maximum amount of error, in votes, expected. }
+    same confidence level, determined by a function of beta.  A value of
+  1 is a single-stage audit.}
+  \item{t}{The maximum amount of error, in votes, expected.}
+  \item{as.taint}{Boolean value.  TRUE means interpret $t$ as a taint in
+  $[0,1]$ by batch (so the threshold error will be batch-specific).  FALSE means interpret $t$ as a proportion of the
+               margin or as number of votes (as described above).}
   \item{small.cut}{ Cut-off in votes--any precincts with potential error
     smaller than this value will not be audited and be assumed to be worst
     case error. }
