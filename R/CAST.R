@@ -1,284 +1,89 @@
 # Implementation of CAST system of Stark
 
 
-## What does n choose k candidates look like?
+
+
+##### CAST ######
 
 
 
-# Make the cartoon example from the CAST paper as a voter data matrix.
-# Param: vote.dist: reported votes for C1, C2, and C3 in order for all precincts.prompt
-make.cartoon = function( n = 400, vote.dist=c(125,113,13), stratify=TRUE ) {
-	n = n - n %% 4
-	
-	V = data.frame( strata = rep( c(rep(c("S1","S1.VBM"), 3),"S2","S2.VBM"), n/4 ),
-					tot.votes = rep( 255, 2*n ),
-					C1 = rep( vote.dist[[1]], 2*n ),
-					C2 = rep( vote.dist[[2]], 2*n ),
-					C3 = rep( vote.dist[[3]], 2*n ) )
-	
-				
-	if ( !stratify ) {
-		V$strata = "S1"
-	}
-	PID = paste( V$strata, rownames(V), sep="-" )
-	names(PID) = "PID"
-	V = cbind( PID, V )
-	V$PID = as.character(V$PID)
-	
-	
-	make.Z( V, c( "C1", "C2", "C3" ) )
-}
-
-
-## make the bad truth as descibed in Stark's paper.
-make.truth.ex.bad = function( Z ) {
-	n = nrow(Z$V)
-	stopifnot( n %% 8 == 0 )
-	C1 = c( rep( 80, n/8 ), rep( 124, 7*n/8 ) )
-	C2 = c( rep( 160, n/8 ), rep( 113, 7*n/8 ) )
-	C3 = c( rep( 13, n/8 ), rep( 15, 7*n/8 ) )
-	reord = sample( 1:n, n )
-	
-	V = data.frame( strata = rep( c(rep(c("S1","S1.VBM"), 3),"S2","S2.VBM"), n/8 ),
-					tot.votes = rep( 255, n ),
-					C1=C1[reord], C2=C2[reord], C3=C3[reord] )
-			
-	PID = paste( V$strata, rownames(V), sep="-" )
-	names(PID) = "PID"
-	V = cbind( PID, V )
-	V$PID = as.character(V$PID)
-	
-	make.Z( V, c( "C1", "C2", "C3" ) )
-}
-
-## Given a collection of counted votes, make a theoretical bad truth by packing all error 
-## possible in the largest precincts
-##
-## Warning: if bound is WPM this error is made by simply adding the max amount of error
-## to the first loser's total (so that total votes may in this case exceed the total votes
-## of the precinct)--this could potentially cause trouble.  Be careful!
-##
-## Param t: an allowed backgound level of error for all precincts
-##       bound.function: Can pass fractionOfVotesBound if you want to do 0.4WPM.
-make.truth.opt.bad = function(Z, strata="strata", 
-			bound=c("margin","WPM"), t=0 ) {
-	bound = match.arg( bound )
-	
-	if ( bound=="WPM" ) {
-		s = CAST.calc.sample(Z, t=t, bound.function=fractionOfVotesBound )
-	} else {
-		s = CAST.calc.sample(Z, t=t )
-	}
-	
-	winner = Z$winner[[Z$f]]
-	
-	stopifnot( all( s$Z$V$PID == Z$V$PID ) )
-	V = Z$V[ order(s$Z$V$e.max, decreasing=TRUE), ]
-	baddies = 1:nrow(V) <= s$q
-	V[winner] = pmax( 0,  V[[winner]] - t )
-	
-	tots = V$tot.votes[baddies]
-	if ( bound=="margin" ) {
-		newvotes = as.data.frame( matrix( 0, nrow=s$q, ncol=length(Z$C.names) ) )
-		names(newvotes) = Z$C.names
-		newvotes[[ Z$losers[[1]] ]] = tots
-		V[ baddies, Z$C.names ] = newvotes 
-	} else {
-		V[ baddies, Z$losers[[1]] ] = V[ baddies, Z$losers[[1]] ] + round( 0.4 * V[ baddies, ]$tot.votes )
-	}
-
-	
-	nZ = make.Z( V[ Z$V$PID, ], Z$C.names )
-	stopifnot( nZ$winner != Z$winner )
-	nZ$num.tweaked = s$q
-	nZ
-	
-}
-
-## make bad truth as described in Stark's paper (assuming fixed precinct size)
-make.truth.opt.bad.strat = function(Z, strata="strata", t=3, shuffle.strata=FALSE) {
-	s = CAST.calc.sample(Z, t=t)
-	
-	if ( shuffle.strata ) {
-		pids = sample(Z$V$PID, s$q )
-	} else {
-		strats = split( Z$V$PID, Z$V[strata] )
-		pids = lapply( names(s$stratas), function( ST ) {
-			sample( strats[[ST]], floor( s$q * s$stratas[[ST]] / s$N ) )
-		} )
-		pids = unlist( pids )
-		if ( ( ext <- ( s$q - length( pids ) ) ) > 0 ) {
-			pids = c( pids, sample( setdiff( Z$V$PID, pids ), ext ) )
-		}
-	}
-		
-	Z$V["C1"] = Z$V["C1"] - t
-	baddies = Z$V$PID %in% pids
-	Z$V[ baddies, Z$C.names ] = cbind( rep( 0, s$q ), rep(255,s$q), rep(0,s$q) ) 
-	make.Z( Z$V, Z$C.names )
-}
-
-make.ok.truth = function( Z, num.off = 8, amount.off = 5 ) {
-	cut = floor(num.off / 2)
-	off = sample( 1:nrow(Z$V), num.off )
-	offUp = off[1:cut]
-	offDown = off[(cut+1):num.off]
-	CW = Z$winners[Z$f]
-	CL = Z$losers[1]
-	maxL = pmin( Z$V[ offUp, CL ], amount.off )
-	Z$V[ offUp, CL ] = Z$V[ offUp, CL ] - maxL
-	Z$V[ offUp, CW ] = Z$V[ offUp, CW ] + maxL
-	maxL = pmin( Z$V[ offDown, CW ], amount.off )
-	Z$V[ offDown, CW ] = Z$V[ offDown, CW ] - maxL
-	Z$V[ offDown, CL ] = Z$V[ offDown, CL ] + maxL
-	
-	Z = countVotes(Z)
-	
-	Z
-}
-
-
-## Make a Z matrix with the desired charactaristics for simulation studies
-## and debugging purposes.
-## 
-## Param M: margin
-##       N: number of precincts
-##       strata: number of strata
-##       per.winner: percent of vote winner got (to get undervotes, 3rd cand, etc.)
-## Return: Z voter matrix with desired charactaristics.
-make.sample = function( M, N, strata=1, per.winner=NULL, 
-						worst.e.max = NULL, 
-						R = NULL, 
-						tot.votes=100000 ) {
-	if ( !is.null( per.winner ) ) {
-		v = c( per.winner, per.winner - M, 1 - 2 * per.winner + M )
-		names(v) = c("WNR", "LSR", "OTR" )
-		stopifnot( min(v) >= 0 && max(v) < 1 )
-		stopifnot( v[[1]] == max(v) )
-	} else {
-		stopifnot( M < 1 && M > 0 )
-		v = c( (1+M) / 2, (1-M)/2 )
-		names(v) = c("WNR", "LSR" )
-	}
-	
-	st = paste( "ST", 1:strata, sep="-" )
-	V = round( (tot.votes / N) * matrix( rep( v, N ), ncol=length(v), byrow=TRUE ) )
-	V = data.frame( V )
-	V = cbind( paste("P", 1:N, sep="-"), rep( st, length.out=N ), apply( V, 1, sum ), V )
-	V[[1]] = as.character( V[[1]] )
-	names(V) = c( "PID", "strata", "tot.votes", names(v) )
-
-	if ( !is.null( worst.e.max ) ) {
-		# calc how bad worst prec is, and then use p(x) = c/sqrt(x)
-		# as density function of precincts.  Invert the CDF, and eval
-		# at orders (1:N)/N to get the new precinct sizes.  Scale
-		# and go!
-		t1 = V[1, ]
-		e.max = t1$tot.votes - t1$LSR + t1$WNR
-		stopifnot( is.null( R ) )
-		R = worst.e.max / e.max
-	}
-	if ( !is.null(R) ) {   # using the ratio of bad to baseline, go.
-		stopifnot( R >= 0 )
-		if ( R <= 2 ) {
-			m = R / N
-			wts = 1:N * m - N*m / 2 + 1
-		} else {
-         p = (R - 2)/(R - 1)
-         C = (1 - p)/R^(1 - p)
-        
-       	 wts = (((1:N)/N)/(C * (R - 1)))^(R - 1)
-		}
-
-		V[names(v)] = round( V[names(v)] * wts )
-		V["tot.votes"] = apply( V[names(v)], 1, sum )
-	}
-	
-	make.Z( V, C.names=names(v) )
-}
-
-
-## Given a vector of precinct totals and the total votes for the winner
-## and the loser, make a plausible precinct-by-precinct vote count that
-## works. 
-## Note: the margins of the precincts will all be the same as the margin
-## of the overall race.
-make.sample.from.totals = function( vote.W, vote.L, totals ) {
-    GT = sum(totals)
-    v = c(vote.W/GT, vote.L/GT)
-    names(v) = c("WNR", "LSR")
-    stopifnot(min(v) >= 0 && max(v) < 1)
-    stopifnot(v[[1]] == max(v))
-    N = length(totals)
-    V = matrix(rep(v, N), ncol = length(v), byrow = TRUE)
-    V = data.frame(V)
-    V = cbind(rep("ST-1", length.out = N), totals, V)
-    names(V) = c("strata", "tot.votes", names(v))
-    V[names(v)] = round(V[names(v)] * totals)
-
-totW = vote.W - sum( V$WNR )
-totL = vote.L - sum( V$LSR )
-
-# make total match (gets off due to rounding)
-tweak = function( votes, flex, tot ) {
-	cntr = 1
-	while ( tot != 0 && cntr <= length(votes) ) {
-		if ( tot > 0 ) {
-			if ( flex[cntr] > 0 ) {
-				votes[cntr] = votes[cntr] + 1
-				tot = tot - 1
-			}
-		} else {
-			if ( votes[cntr] > 0 ) {
-				votes[cntr] = votes[cntr] - 1
-				tot = tot + 1
-			}
-		}
-		cntr = cntr + 1
-	}
-	votes
-}
-
-	
-flex = with( V, tot.votes - WNR - LSR )
-V$WNR = tweak( V$WNR, flex, totW )
-flex = with( V, tot.votes - WNR - LSR )
-V$LSR = tweak( V$LSR, flex, totL )
-
-	Z =    make.Z(V, C.names = names(v))
-	stopifnot( Z$total.votes == sum( totals ) )
-	stopifnot( sum(Z$V$WNR) == vote.W )
-	stopifnot( sum(Z$V$LSR) == vote.L )
-	
-	Z
-}
-
-
-	
-	
-
-make.sample.from.totals.margin = function( M,  totals, per.winner=NULL ) {
-	GT = sum(totals)
-	vote.W = round( GT* (0.5 + M/2) )
-	vote.L = round( GT * (0.5 - M/2) )
-	make.sample.from.totals( vote.W, vote.L, totals )
-}
 
 
 
-## Make an audit.plan given reported results for an election.  It gives back what to
-## do for a single stage.  If stages is > 1, then it adjusts beta appropriately.
-##
-## param Z      : voter matrix
-##       beta   : overall chance of correctly escalating a bad election to full recount
-##       stages : number of auditing stages before full recount
-##       t      : Threshold error for escalation -- if >= 1 then # votes, otherwise
-##                fraction of margin.
-##  small.cut   : Consider all precincts smaller than this to be as wrong as possible
-##                and then remove them from the N to sample from.
-##        drop  : Don't audit precincts in the drop column (of T/F) since they are known
-##     as.taint : TRUE means interpret t as a taint in [0,1] by batch.  FALSE is a prop of
-##                margin or number of votes (as desc. above)
+
+
+#' @title
+#' Construct a sample for auditing using CAST
+#' 
+#' @description 
+#' Collection of functions for planning and evaluating results of a CAST
+#' election audit.  CAST is a system devised by Dr. Philip B., Stark, UC
+#' Berkeley Department of Statistics.
+#' 
+#' \code{CAST.calc.sample} determines what size SRS sample should be drawn to
+#' have a reasonable chance of certification if the election does not have
+#' substantial error.  It returns an \code{audit.plan}. \code{CAST.sample}
+#' takes the audit.plan and draws a sample to audit. \code{CAST.audit} takes
+#' audit data (presumably from the audit of the sample drawn in previous step)
+#' and analyzes it.
+#' 
+#' Make an audit.plan given reported results for an election.  It gives back what to
+#' do for a single stage.  If stages is > 1, then it adjusts beta appropriately.
+#' 
+#' 
+#' @param Z elec.data object (voter matrix)
+#' @param beta the confidence level desired - overall chance of correctly escalating a bad election to full recount
+#' @param stages number of auditing stages. Each stage will have the same
+#' confidence level, determined by a function of beta.  A value of 1 is a
+#' single-stage audit.
+#' @param t The maximum amount of error, in votes, expected. Threshold error for escalation -- if >= 1 then number of votes, otherwise
+#'                fraction of margin.
+#' @param as.taint Boolean value.  TRUE means interpret $t$ as a taint in
+#' $[0,1]$ by batch (so the threshold error will be batch-specific).  FALSE
+#' means interpret $t$ as a proportion of the margin or as number of votes (as
+#' described above).
+#' @param small.cut Cut-off in votes--any precincts with potential error
+#' smaller than this value will not be audited and be assumed to be worst case
+#' error.
+#' @param strata Name of the stratification column of Z.  Not needed if audit
+#' plan also being passed in case of CAST.sample. NULL means single strata.
+#' @param drop Vector of precincts to drop for whatever reasons (such as they
+#' are already known).  This is a vector of TRUE/FALSE.
+#' @param method Method of calculation.
+#' @param calc.e.max Should the e.max be taken as given, or recalculated?
+#' @param bound.function What function should be used to calculate worst-case
+#' potential error of precincts.
+#' @author Luke W. Miratrix
+#' @seealso \code{\link{elec.data}} for a description of the object that holds
+#' precinct-level vote records.  See \code{\link{tri.calc.sample}} for a PPEB
+#' auditing method.  See \code{\link{CAST.calc.opt.cut}} for calculating
+#' optimal cut-offs to keep needed sample size low. Also see
+#' \code{\link{sim.race}}, \code{\link{do.audit}}, \code{\link{make.sample}},
+#' and \code{\link{make.truth}} for doing simulation studies of this method.
+#' 
+#' @references Philip B. Stark. CAST: Canvass Audits by Sampling and Testing.
+#' University of California at Berkeley Department of Statistics, 2009. URL:
+#' http://statistics.berkeley.edu/~stark/Preprints/cast09.pdf.  Also see
+#' http://www.stat.berkeley.edu/~stark/Vote/index.htm for other relevant
+#' information.
+#' @examples
+#' 
+#'         ## Make an example cartoon race (from Stark paper)
+#' 	Z = make.cartoon()
+#' 
+#'         ## What should we do?
+#' 	samp.info = CAST.calc.sample( Z )
+#' 	samp.info
+#' 
+#'         ## Draw a sample.
+#' 	samp = CAST.sample( Z, samp.info$ns )
+#'         samp
+#' 
+#'         ## Analyze what a CAST audit of santa cruz would entail
+#'         data(santa.cruz)
+#'         Z = elec.data( santa.cruz, C.names=c("leopold","danner") )
+#'         CAST.calc.sample( Z, beta=0.75, stages=1, t=5, small.cut=60)
+#' @export
 CAST.calc.sample = function( Z, beta = 0.9, stages=1, t=3, as.taint=FALSE,
 				small.cut = NULL,
 				strata=NULL, drop=NULL, 
@@ -396,6 +201,50 @@ CAST.calc.sample = function( Z, beta = 0.9, stages=1, t=3, as.taint=FALSE,
 }
 
 
+
+
+#' Calculate Optimal CAST plan
+#' 
+#' With CAST, it is sometimes advantageous to set aside small precincts and
+#' assume they are entirely in error so as to reduce the total number of
+#' precincts in the pool that we sample from.  This trade-off can increase the
+#' power of the audit or, in other terms, allow us to sample fewer precincts as
+#' the chance of nabbing the large, dangerous ones is larger.
+#' 
+#' Of all cuts that produce the smallest \code{n}, it returns the smallest cut
+#' (since sometimes multiple cut-offs lead to the same sample size).
+#' 
+#' This function also plots the trade-off of sample size for a specific cut, if
+#' the plot flag is TRUE.
+#' 
+#' This function iteratively passes increasing values of \code{small.cut} to
+#' \code{\link{CAST.calc.sample}} and examines the resulting \code{n}.
+#' 
+#' @param Z The elec.data object
+#' @param beta 1-\code{beta} is the risk of the audit failing to notice the
+#' need to go to a full manual count if it should.
+#' @param stages Number of stages in the audit.
+#' @param t The allowed vote swing that is not considered a material error.
+#' @param plot TRUE/FALSE.  Plot the trade-off curve.
+#' @param \dots Extra arguments to the plot command.
+#' @return Returns a list.  \item{cut}{ Size of the optimal cut.  All precincts
+#' with an error smaller than or equal to cut would not be audited, and instead
+#' be assumed to be in full error. } \item{n}{ Corresponding needed sample size
+#' given that cut. } \item{q}{ The number of tainted precincts that would be
+#' needed to throw the election, beyond the ones set aside due to being smaller
+#' than \code{cut}.}
+#' @author Luke W. Miratrix
+#' @examples
+#' 
+#' 
+#'         ## Find optimial cut for  determining which small precincts that
+#'         ## we would set aside and not audit in Santa Cruz
+#'         data(santa.cruz)
+#'         Z = elec.data( santa.cruz, C.names=c("leopold","danner") )
+#' 
+#'         CAST.calc.opt.cut( Z, beta=0.75, stages=1, t=5, plot=TRUE )
+#' 
+#' @export CAST.calc.opt.cut
 CAST.calc.opt.cut = function( Z, beta = 0.9, stages=2, t=3, plot=FALSE, ... ) {
 
 	cuts = t:max(2*Z$V$tot.votes)
@@ -434,47 +283,29 @@ CAST.calc.opt.cut = function( Z, beta = 0.9, stages=2, t=3, plot=FALSE, ... ) {
 }
 
 
-is.audit.plan = function( x ) {
-	inherits( x, "audit.plan" )
-}
-
-
-## Print a nice pretty audit plan.
-print.audit.plan = function( x, ... ) {
-  P = x
-  if ( x$as.taint ) {
-  	met = paste( P$method, "(taint)", collapse="")
-  } else {
-  	met = P$method
-  }
-  cat(sprintf("Audit plan: beta=%.2f  stages=%d   beta1=%.2f   met=%s\n", 
-  						P$beta, P$stages, P$beta1, met))
-  if ( P$t < 1 ) {
-  	cat(sprintf("\tt=%.3f\t q=%d\t N=%d / %d\t n=%d\n", 
-  						P$t, P$q, P$N, P$Z$N, P$n ) )
-  } else {
-  	cat(sprintf("\tt=%d\t q=%d\t N=%d / %d\t n=%d\n", 
-  						P$t, P$q, P$N, P$Z$N, P$n ) )
-  }
-  cat(sprintf("\tskipped=%d\t mar lost=%.0f%%\n",
-  						P$skipped, 100*(1-P$threshold) ) )
-  cat(sprintf("\tE[# pcts audited]=%.1f\t\t E[votes audited]=%.1f\n",
-  						P$n, sum(P$E.votes) ) )
-	if ( length(P$stratas) > 1 ) {
-		tb =  rbind( P$stratas, P$ns, P$E.votes )
-		rownames(tb) = c( "N", "n", "E.vts" )
-		colnames(tb) = names(P$ns)
-		print(tb)
-	}
-}
 				
 
-## Sample from the various strata according to the schedule set by 'ns'.
-## Ignore all precincts that are known (i.e., have been previously audited).
-##
-## Param known: name of column of true/false of known vs. unknown counts
-##
-## Return: List of precincts to be audited.
+#' Sample from the various strata according to the schedule set by 'ns'.
+#' Ignore all precincts that are known (i.e., have been previously audited).
+#'
+#' @inheritParams CAST.calc.sample
+#' 
+#' @param ns EITHER an audit.plan or a vector of sample sizes for the strata.
+#' Names must correspond ot the names of the strata.  If ns is an audit plan,
+#' then the strata variable should not be passed as well.
+#' @param seed Seed to use--for reproducability.
+#' @param print.trail Print out diagnostics.
+#' @param known The column of known precincts that should thus not be selected.
+#' Similar to "drop", above.
+#'
+#' @return: List of precincts to be audited.
+#' @examples
+#' Z = make.cartoon()
+#' samp.info = CAST.calc.sample( Z )
+#' samp.info
+#' samp = CAST.sample( Z, samp.info )
+#' 
+#' @export
 CAST.sample = function( Z,  ns,  strata=NULL, seed=NULL, 
 						print.trail=FALSE, known="known" ) {
 	pt = function( ... ) { if ( print.trail ) { cat( ..., "\n" ) } }
@@ -519,7 +350,19 @@ CAST.sample = function( Z,  ns,  strata=NULL, seed=NULL,
 }
 
 
-## Given audit data, comptue p.values and all that.
+#' Given audit data, compute p.values and all that.
+#'
+#'
+#' @inheritParams CAST.calc.sample
+#' @param plan An audit.plan object that the audit was conducted
+#'   under.
+#' @param audit A data.matrix holding the audit data, if the Z object
+#'   does not have one, or if it is desirable to override it.  If both
+#'   the Z object has an audit object and audit is not null, it will
+#'   use this parameter and ignore the one in Z.
+#' @param ...  Passed to CAST.calc.sample if plan is null and needs to
+#'   be regenerated.
+#' @export
 CAST.audit = function( Z, audit=NULL, plan=NULL, ... ) {
 	if ( is.null( plan ) ) {
 		plan = CAST.calc.sample( Z, ... )
@@ -549,6 +392,44 @@ CAST.audit = function( Z, audit=NULL, plan=NULL, ... ) {
 ## CAST.sample automatically.
 ##
 ## Return:   Overstatments for each candidate for each precinct.
+
+
+#' do.audit
+#' 
+#' Given a list of precincts to audit, the truth (as an elec.data object), and
+#' the original votes (also as an elec.data object), do a simulated CAST audit
+#' and return the audit frame as a result.
+#' 
+#' Given the reported vote table, Z, and the actual truth (simulated) (a Z
+#' matrix with same precincts), and a list of precincts to audit, do the audit.
+#' If audit.names is null and the ns is not null, it will sample from precincts
+#' via CAST.sample automatically.
+#' 
+#' @param Z elec.data object
+#' @param truth another elec.data object--this one's vote counts are considered
+#' "true"
+#' @param audit.names name of precincts to audit.  Correspond to rownames of
+#' the Z and truth elec.data objects.
+#' @param ns List of sample sizes for strata. If this is passed, this method
+#' will randomly select the precincts to audit.  In this case audit.names
+#' should be set to NULL.
+#' @return Overstatments for each candidate for each precinct.
+#' @author Luke W. Miratrix
+#' @seealso \link{CAST.audit} for how to run the CAST auditing method.  See
+#' \code{\link{make.sample}} and \code{\link{make.truth}} for generating fake
+#' situations for doing simulation studies of the CAST method.  See
+#' \link{AuditErrors} and \code{\link{audit.totals.to.OS}} for utility
+#' functions handing processing of audit data.
+#' @examples
+#' 
+#' Z = make.cartoon(n=200)
+#' truth = make.truth.opt.bad(Z, t=0, bound="WPM")
+#' samp.info=CAST.calc.sample(Z, beta=0.75, stages=1, t=5 )
+#' audit.names = CAST.sample( Z, samp.info )
+#' do.audit( Z, truth, audit.names )
+#' 
+#' 
+#' @export do.audit
 do.audit = function( Z, truth, audit.names, ns=NULL ) {
 	
 	if ( is.null( audit.names ) ) {
@@ -566,22 +447,43 @@ do.audit = function( Z, truth, audit.names, ns=NULL ) {
 }
 
 
-## Single test
-test.CAST = function() {
-	Z = make.cartoon()
-	
-	samp.info = CAST.calc.sample( Z )
-	samp.info
-	
-	samp = CAST.sample( Z, samp.info )
-	
-	list( samp.info, samp )
-}
 
 
 
-# testing the CAST system
-# return: Number of stages audited (s+1=full recount) before stopping
+#' Simulate CAST audits to assess performance
+#' 
+#' Simulate a race (using the \code{\link{make.cartoon}} method) and run a CAST
+#' audit on that simulation.  CAST is a system devised by Dr. Philip B., Stark,
+#' UC Berkeley Department of Statistics.
+#' 
+#' 
+#' @param beta the confidence level desired
+#' @param stages number of auditing stages. Each stage will have the same
+#' confidence level, determined by a function of beta.
+#' @param print.trail Print out diagnostics.
+#' @param n Desired sample size.
+#' @param truth.maker Function to generate "truth"
+#' @return A vector of 3 numbers.  The first is the stage reached.  The second
+#' is the total number of precincts audited.  The third is 0 if the audit
+#' failed to certify (i.e. found large error in the final stage), and 1 if the
+#' audit certified the election (did not find large error in the final stage).
+#' @author Luke W. Miratrix
+#' @seealso See \code{\link{CAST.audit}} and \code{\link{CAST.calc.opt.cut}} for
+#' methods regarding CAST audits. Also see \code{\link{do.audit}},
+#' \code{\link{make.sample}}, and \code{\link{make.truth}} for doing other
+#' simulation studies of this method.
+#' @references See http://www.stat.berkeley.edu/~stark/Vote/index.htm for
+#' relevant information.
+#' @examples
+#' 
+#'      ## See how many times the CAST method fails to catch a wrong
+#'      ##  election in 20 trials.
+#'      replicate( 20, sim.race( beta=0.75, stages=2, truth.maker=make.truth.opt.bad) )
+#' 
+#'      ## Now see how much work the CAST method does for typical elections.
+#'      replicate( 20, sim.race( beta=0.75, stages=2, truth.maker=make.ok.truth) )
+#' 
+#' @export sim.race
 sim.race = function( n=800, beta=0.75, stages=2, 
 						truth.maker=make.truth.opt.bad,
 						print.trail=FALSE) {
@@ -620,7 +522,7 @@ sim.race = function( n=800, beta=0.75, stages=2,
 			# not audit again.
 			Z$V[ audit.names, "known" ] = TRUE
 			# rebuild Z to update margin totals, etc.
-			Z = make.Z( Z$V, Z$C.names )  
+			Z = elec.data( Z$V, Z$C.names )  
 		}
 	}
 	c( s, sum(tots), t < samp.info$t )
